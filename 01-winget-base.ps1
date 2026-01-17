@@ -1,11 +1,28 @@
+# 01-install-apps.ps1
 # Win11 Baseline Setup - winget installer
-# Run in an elevated PowerShell 7+ session if possible.
+# This script will bootstrap winget via 00-get-winget.ps1 if needed.
 
 $ErrorActionPreference = "Stop"
 
-function Assert-WinGet {
-  if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
-    throw "winget not found. Install 'App Installer' from Microsoft Store, then re-run."
+function Test-WinGet {
+  return [bool](Get-Command winget -ErrorAction SilentlyContinue)
+}
+
+function Ensure-WinGet {
+  if (Test-WinGet) { return }
+
+  $scriptDir = Split-Path -Parent $PSCommandPath
+  $bootstrap = Join-Path $scriptDir "00-get-winget.ps1"
+
+  if (-not (Test-Path $bootstrap)) {
+    throw "winget not found and bootstrap script missing: $bootstrap"
+  }
+
+  Write-Host "winget not found. Running bootstrap: $bootstrap" -ForegroundColor Yellow
+  & powershell -ExecutionPolicy Bypass -File $bootstrap
+
+  if (-not (Test-WinGet)) {
+    throw "winget still not available after running 00-get-winget.ps1"
   }
 }
 
@@ -17,11 +34,6 @@ function Install-WinGetPackage {
 
   Write-Host "`n==> Installing: $Name ($Id)" -ForegroundColor Cyan
 
-  # Common flags:
-  # -e / --exact reduces ambiguity
-  # --accept-* avoids prompts
-  # --disable-interactivity keeps it scriptable
-  # --silent works for many packages; if a package doesn't support silent, winget may still proceed or fail.
   $args = @(
     "install", "--id", $Id,
     "-e",
@@ -40,7 +52,8 @@ function Install-WinGetPackage {
   }
 }
 
-Assert-WinGet
+# ---- Ensure winget (and prereqs via bootstrap) ----
+Ensure-WinGet
 
 # ----------------------------
 # Browsers
@@ -91,22 +104,30 @@ $Networking = @(
 )
 
 # ----------------------------
+# Developer / Ops / CLI Tools
+# ----------------------------
+$DevOps = @(
+  @{ Id = "Microsoft.PowerShell"; Name = "PowerShell 7" },
+  @{ Id = "Amazon.AWSCLI"; Name = "AWS CLI" }
+)
+
+# ----------------------------
 # Windows Enhancements & Productivity
 # ----------------------------
 $Productivity = @(
   @{ Id = "Microsoft.PowerToys"; Name = "Microsoft PowerToys" },
-  @{ Id = "FilesCommunity.Files"; Name = "Files App" },                     # from your list
-  @{ Id = "voidtools.Everything"; Name = "Everything" },                    # from your list
-  @{ Id = "stnkl.EverythingToolbar"; Name = "Everything Toolbar" },         # from your list
-  @{ Id = "Open-Shell.Open-Shell-Menu"; Name = "Open-Shell Menu" },         # from your list
-  @{ Id = "RamenSoftware.Windhawk"; Name = "Windhawk" },                    # from your list
+  @{ Id = "FilesCommunity.Files"; Name = "Files App" },
+  @{ Id = "voidtools.Everything"; Name = "Everything" },
+  @{ Id = "stnkl.EverythingToolbar"; Name = "Everything Toolbar" },
+  @{ Id = "Open-Shell.Open-Shell-Menu"; Name = "Open-Shell Menu" },
+  @{ Id = "RamenSoftware.Windhawk"; Name = "Windhawk" },
 
   @{ Id = "Winaero.WinaeroTweaker"; Name = "Winaero Tweaker" },
   @{ Id = "AltSnap.AltSnap"; Name = "AltSnap" },
 
   @{ Id = "DupeGuru.DupeGuru"; Name = "dupeGuru" },
-  @{ Id = "WinMerge.WinMerge"; Name = "WinMerge" },                         # from your list
-  @{ Id = "WinDirStat.WinDirStat"; Name = "WinDirStat" },                   # from your list
+  @{ Id = "WinMerge.WinMerge"; Name = "WinMerge" },
+  @{ Id = "WinDirStat.WinDirStat"; Name = "WinDirStat" },
   @{ Id = "AntibodySoftware.WizTree"; Name = "WizTree" },
   @{ Id = "QL-Win.QuickLook"; Name = "QuickLook" }
 )
@@ -115,7 +136,7 @@ $Productivity = @(
 # Privacy & Security
 # ----------------------------
 $Security = @(
-  @{ Id = "AndyFul.ConfigureDefender"; Name = "ConfigureDefender" },         # from your list
+  @{ Id = "AndyFul.ConfigureDefender"; Name = "ConfigureDefender" },
   @{ Id = "Henry++.Simplewall"; Name = "simplewall" }
 )
 
@@ -123,15 +144,15 @@ $Security = @(
 # Media, Content Tools & Creativity
 # ----------------------------
 $Media = @(
-  @{ Id = "VideoLAN.VLC"; Name = "VLC media player" },                       # from your list
+  @{ Id = "VideoLAN.VLC"; Name = "VLC media player" },
   @{ Id = "dotPDN.PaintDotNet"; Name = "Paint.NET" },
-  @{ Id = "ShareX.ShareX"; Name = "ShareX" },                                # from your list
+  @{ Id = "ShareX.ShareX"; Name = "ShareX" },
   @{ Id = "OBSProject.OBSStudio"; Name = "OBS Studio" },
 
-  @{ Id = "Meltytech.Shotcut"; Name = "Shotcut" },                           # from your list
+  @{ Id = "Meltytech.Shotcut"; Name = "Shotcut" },
   @{ Id = "HandBrake.HandBrake"; Name = "HandBrake" },
-  @{ Id = "Audacity.Audacity"; Name = "Audacity" },                          # from your list
-  @{ Id = "AndreWiethoff.ExactAudioCopy"; Name = "Exact Audio Copy" },       # from your list
+  @{ Id = "Audacity.Audacity"; Name = "Audacity" },
+  @{ Id = "AndreWiethoff.ExactAudioCopy"; Name = "Exact Audio Copy" },
   @{ Id = "MusicBrainz.Picard"; Name = "MusicBrainz Picard" },
 
   @{ Id = "IrfanSkiljan.IrfanView"; Name = "IrfanView" },
@@ -139,7 +160,7 @@ $Media = @(
   @{ Id = "BlenderFoundation.Blender"; Name = "Blender" },
 
   @{ Id = "MKVToolNix.MKVToolNix"; Name = "MKVToolNix" },
-  @{ Id = "MediaArea.MediaInfo.GUI"; Name = "MediaInfo" },                   # from your list
+  @{ Id = "MediaArea.MediaInfo.GUI"; Name = "MediaInfo" },
   @{ Id = "GuinpinSoft.MakeMKV"; Name = "MakeMKV" },
   @{ Id = "Canneverbe.CDBurnerXP"; Name = "CDBurnerXP" }
 )
@@ -149,23 +170,22 @@ $Media = @(
 # ----------------------------
 $BackupImaging = @(
   @{ Id = "Rescuezilla.Rescuezilla"; Name = "Rescuezilla" },
-  @{ Id = "Rufus.Rufus"; Name = "Rufus" },                                   # from your list
+  @{ Id = "Rufus.Rufus"; Name = "Rufus" },
   @{ Id = "Ventoy.Ventoy"; Name = "Ventoy" }
 )
-# NOTE: Macrium Reflect is intentionally not scripted here (varies by licensing / distribution).
-# You said you use it for older machines — keep it as a manual install.
+# Macrium Reflect: manual install (licensing/distribution varies)
 
 # ----------------------------
 # Cloud / S3 Tooling
 # ----------------------------
 $Cloud = @(
-  @{ Id = "Rclone.Rclone"; Name = "rclone" },                                # from your list
-  @{ Id = "Bdrive.RcloneView"; Name = "Rclone Browser (RcloneView)" },       # GUI rclone browser shown in your list
-  @{ Id = "Netsdk.S3Browser"; Name = "S3 Browser" }                          # from your list
+  @{ Id = "Rclone.Rclone"; Name = "rclone" },
+  @{ Id = "Bdrive.RcloneView"; Name = "Rclone Browser (RcloneView)" },
+  @{ Id = "Netsdk.S3Browser"; Name = "S3 Browser" }
 )
 
 # ----------------------------
-# Gaming / GPU Ecosystem + Benchmarks
+# Gaming / GPU Benchmarks
 # ----------------------------
 $GamingBench = @(
   @{ Id = "Valve.Steam"; Name = "Steam" },
@@ -178,6 +198,7 @@ $AllGroups = @(
   @{ Title="Browsers"; Items=$Browsers },
   @{ Title="System Essentials & Hardware Control"; Items=$SystemEssentials },
   @{ Title="Networking & Diagnostics"; Items=$Networking },
+  @{ Title="Developer / Ops / CLI Tools"; Items=$DevOps },
   @{ Title="Windows Enhancements & Productivity"; Items=$Productivity },
   @{ Title="Privacy & Security"; Items=$Security },
   @{ Title="Media, Content Tools & Creativity"; Items=$Media },
@@ -196,4 +217,4 @@ foreach ($group in $AllGroups) {
   }
 }
 
-Write-Host "`nDone. Suggest rebooting if drivers/tools hooked system services or shell components." -ForegroundColor Green
+Write-Host "`nDone. Suggest rebooting if shell components (.NET/Explorer tweaks) or services were installed." -ForegroundColor Green
