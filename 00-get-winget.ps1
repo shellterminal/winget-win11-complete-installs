@@ -1,6 +1,6 @@
-# 00-install-winget.ps1
-# Bootstrap WinGet (App Installer) from https://aka.ms/getwinget
-# Run in Windows PowerShell 5.1 or PowerShell 7. Recommended: run as Administrator.
+# 00-get-winget.ps1
+# Bootstraps .NET Framework 3.5 (includes 2.0/3.0) and WinGet (App Installer) from https://aka.ms/getwinget
+# Recommended: run as Administrator.
 
 $ErrorActionPreference = "Stop"
 
@@ -8,42 +8,69 @@ function Test-WinGet {
   return [bool](Get-Command winget -ErrorAction SilentlyContinue)
 }
 
-if (Test-WinGet) {
-  Write-Host "WinGet already available. Skipping bootstrap." -ForegroundColor Green
-  exit 0
+function Ensure-NetFx3 {
+  Write-Host "Checking .NET Framework 3.5 (includes 2.0/3.0)..." -ForegroundColor Yellow
+
+  # NetFx3 feature covers .NET 2.0 and 3.0, plus 3.5
+  $feature = Get-WindowsOptionalFeature -Online -FeatureName NetFx3 -ErrorAction SilentlyContinue
+
+  if ($feature -and $feature.State -eq "Enabled") {
+    Write-Host ".NET Framework 3.5 already enabled." -ForegroundColor Green
+    return
+  }
+
+  Write-Host "Enabling .NET Framework 3.5 (NetFx3)..." -ForegroundColor Yellow
+  try {
+    Enable-WindowsOptionalFeature -Online -FeatureName NetFx3 -All -NoRestart | Out-Host
+    Write-Host ".NET Framework 3.5 enabled (reboot may be required for some apps)." -ForegroundColor Green
+  } catch {
+    Write-Warning @"
+Failed to enable .NET Framework 3.5 automatically.
+Common causes:
+- Windows Update disabled / WSUS policy
+- Offline install requires a source path
+
+If you have Windows install media mounted (e.g. D:\), try:
+  DISM /Online /Enable-Feature /FeatureName:NetFx3 /All /LimitAccess /Source:D:\sources\sxs
+"@
+    throw
+  }
 }
 
-Write-Host "WinGet not found. Downloading App Installer bundle..." -ForegroundColor Yellow
+function Install-WinGet {
+  if (Test-WinGet) {
+    Write-Host "WinGet already available. Skipping WinGet bootstrap." -ForegroundColor Green
+    return
+  }
 
-$TempDir = Join-Path $env:TEMP "winget-bootstrap"
-New-Item -ItemType Directory -Path $TempDir -Force | Out-Null
+  Write-Host "WinGet not found. Downloading App Installer bundle..." -ForegroundColor Yellow
 
-$BundlePath = Join-Path $TempDir "Microsoft.DesktopAppInstaller.msixbundle"
+  $TempDir = Join-Path $env:TEMP "winget-bootstrap"
+  New-Item -ItemType Directory -Path $TempDir -Force | Out-Null
 
-# aka.ms/getwinget is Microsoft's redirect to the latest App Installer bundle.
-Invoke-WebRequest -Uri "https://aka.ms/getwinget" -OutFile $BundlePath -UseBasicParsing
+  $BundlePath = Join-Path $TempDir "Microsoft.DesktopAppInstaller.msixbundle"
 
-Write-Host "Installing App Installer (this provides winget)..." -ForegroundColor Yellow
-Add-AppxPackage -Path $BundlePath
+  # aka.ms/getwinget redirects to the latest App Installer MSIX bundle.
+  Invoke-WebRequest -Uri "https://aka.ms/getwinget" -OutFile $BundlePath -UseBasicParsing
 
-# Give WindowsApps path a moment to refresh in the current session
-Start-Sleep -Seconds 2
+  Write-Host "Installing App Installer (provides winget)..." -ForegroundColor Yellow
+  Add-AppxPackage -Path $BundlePath
 
-if (-not (Test-WinGet)) {
-  Write-Warning "WinGet still not found after installing App Installer."
+  Start-Sleep -Seconds 2
 
-  Write-Host @"
-Common causes:
-- You haven't logged into Windows as a user yet (Store registration is asynchronous).
-- Required dependencies (Microsoft.VCLibs / Microsoft.UI.Xaml) aren't present on some editions.
-- You may need a reboot.
-
+  if (-not (Test-WinGet)) {
+    Write-Warning @"
+WinGet still not found after installing App Installer.
 Try:
 1) Reboot, then run: winget --version
-2) Open Microsoft Store once, then try again.
+2) Open Microsoft Store once (App Installer registration can be asynchronous)
 "@
+    throw "WinGet bootstrap did not complete successfully."
+  }
 
-  throw "WinGet bootstrap did not complete successfully."
+  Write-Host "WinGet installed successfully: $(winget --version)" -ForegroundColor Green
 }
 
-Write-Host "WinGet installed successfully: $(winget --version)" -ForegroundColor Green
+# ---- Run prereqs then WinGet bootstrap ----
+Ensure-NetFx3
+Install-WinGet
